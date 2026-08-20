@@ -1,4 +1,5 @@
 #include "raylib.h"
+#include "raymath.h"
 #include <stdint.h>
 #include <stdio.h>
 
@@ -18,13 +19,13 @@ typedef int8_t i8;
 typedef i32 b32;
 
 typedef struct {
-  u8 Frame;
-  f32 FrameTimer;
-  f32 FrameDuration;
+  u8 frame;
+  f32 frameTimer;
+  f32 frameDuration;
 } Animation_State;
 
-enum Player_State { PLAYER_IDLE, PLAYER_WALKING };
-enum Player_Direction {
+typedef enum { PLAYER_IDLE, PLAYER_WALKING } Player_State;
+typedef enum {
   RIGHT,
   LEFT,
   UP,
@@ -33,7 +34,16 @@ enum Player_Direction {
   DOWNRIGHT,
   UPRIGHT,
   UPLEFT
-};
+} Player_Direction;
+
+typedef struct {
+  Vector2 position;
+  f32 speed;
+  Player_State playerState;
+  Player_Direction playerDirection;
+  Animation_State walkingAnimation;
+  Animation_State idleAnimation;
+} Player_Info;
 
 //===============Player Move========================
 Rectangle GetPlayerMoveDownIdleSprite() {
@@ -524,18 +534,8 @@ void GetAllUpLeftIdleAnimations(Rectangle *source) {
   source[3] = GetPlayerUpLeftIdleSprite();
 }
 
-int main(void) {
-  const i32 screenWidth = 800;
-  const i32 screenHeight = 450;
-
-  InitWindow(screenWidth, screenHeight, "Platform");
-  Texture2D propsTexture = LoadTexture("assets/Map/Texture/TX Props.png");
-  Texture2D playerWalkTexture =
-      LoadTexture("assets/Char/16x16/16x16 Walk-Sheet.png");
-  Texture2D playerIdleTexture =
-      LoadTexture("assets/Char/16x16/16x16 Idle-Sheet.png");
-
-  SetTargetFPS(60);
+void DrawPlayer(Texture2D playerWalkTexture, Texture2D playerIdleTexture,
+                f32 dt, Player_Info *player) {
 
   Rectangle walkingDownAnimationsources[4] = {};
   GetAllWalkingDownAnimations(walkingDownAnimationsources);
@@ -572,132 +572,307 @@ int main(void) {
   GetAllDownLeftIdleAnimations(idleDownLeftAnimationsources);
 
   Rectangle source = {};
-  Rectangle destination = {screenWidth / 2 - 32, screenHeight / 2 - 32, 64, 64};
-  Animation_State walkingAnimationState = {};
-  walkingAnimationState.FrameDuration = 0.15f;
-  Animation_State idleAnimationState = {};
-  idleAnimationState.FrameDuration = 0.15f;
-  enum Player_State playerState = PLAYER_IDLE;
-  enum Player_Direction playerDirection = DOWN;
+  Rectangle destination = {player->position.x - 16, player->position.y - 16, 32,
+                           32};
+
+  if (player->playerState == PLAYER_IDLE) {
+    player->idleAnimation.frameTimer += dt;
+    if (player->idleAnimation.frameTimer >=
+        player->idleAnimation.frameDuration) {
+      player->idleAnimation.frame = (player->idleAnimation.frame + 1) % 4;
+      player->idleAnimation.frameTimer -= player->idleAnimation.frameDuration;
+    }
+
+    switch (player->playerDirection) {
+    case DOWN: {
+      source = idleDownAnimationsources[player->idleAnimation.frame];
+    } break;
+    case DOWNRIGHT: {
+      source = idleDownRightAnimationsources[player->idleAnimation.frame];
+    } break;
+    case RIGHT: {
+      source = idleRightAnimationsources[player->idleAnimation.frame];
+    } break;
+    case UPRIGHT: {
+      source = idleUpRightAnimationsources[player->idleAnimation.frame];
+    } break;
+    case UP: {
+      source = idleUpAnimationsources[player->idleAnimation.frame];
+    } break;
+    case UPLEFT: {
+      source = idleUpLeftAnimationsources[player->idleAnimation.frame];
+    } break;
+    case LEFT: {
+      source = idleLeftAnimationsources[player->idleAnimation.frame];
+    } break;
+    case DOWNLEFT: {
+      source = idleDownLeftAnimationsources[player->idleAnimation.frame];
+    } break;
+    }
+    DrawTexturePro(playerIdleTexture, source, destination, (Vector2){0, 0},
+                   0.0f, WHITE);
+
+    player->walkingAnimation.frame = 0;
+  }
+  if (player->playerState == PLAYER_WALKING) {
+    player->walkingAnimation.frameTimer += dt;
+    if (player->walkingAnimation.frameTimer >=
+        player->walkingAnimation.frameDuration) {
+      player->walkingAnimation.frame = (player->walkingAnimation.frame + 1) % 4;
+      player->walkingAnimation.frameTimer -=
+          player->walkingAnimation.frameDuration;
+    }
+
+    switch (player->playerDirection) {
+    case DOWN: {
+      source = walkingDownAnimationsources[player->walkingAnimation.frame];
+    } break;
+    case DOWNRIGHT: {
+      source = walkingDownRightAnimationsources[player->walkingAnimation.frame];
+    } break;
+    case RIGHT: {
+      source = walkingRightAnimationsources[player->walkingAnimation.frame];
+    } break;
+    case UPRIGHT: {
+      source = walkingUpRightAnimationsources[player->walkingAnimation.frame];
+    } break;
+    case UP: {
+      source = walkingUpAnimationsources[player->walkingAnimation.frame];
+    } break;
+    case UPLEFT: {
+      source = walkingUpLeftAnimationsources[player->walkingAnimation.frame];
+    } break;
+    case LEFT: {
+      source = walkingLeftAnimationsources[player->walkingAnimation.frame];
+    } break;
+    case DOWNLEFT: {
+      source = walkingDownLeftAnimationsources[player->walkingAnimation.frame];
+    } break;
+    }
+    DrawTexturePro(playerWalkTexture, source, destination, (Vector2){0, 0},
+                   0.0f, WHITE);
+    player->idleAnimation.frame = 0;
+  }
+  DrawCircle(player->position.x, player->position.y, 5, RED);
+}
+
+int main(void) {
+  const i32 screenWidth = 800;
+  const i32 screenHeight = 450;
+
+  InitWindow(screenWidth, screenHeight, "Platform");
+  Texture2D propsTexture = LoadTexture("assets/Map/Texture/TX Props.png");
+  Texture2D playerWalkTexture =
+      LoadTexture("assets/Char/16x16/16x16 Walk-Sheet.png");
+  Texture2D playerIdleTexture =
+      LoadTexture("assets/Char/16x16/16x16 Idle-Sheet.png");
+  Texture2D grassTexture =
+      LoadTexture("assets/Map/Texture/TX Tileset Grass.png");
+  SetTextureFilter(grassTexture, TEXTURE_FILTER_POINT);
+  Rectangle grass[4] = {{0, 0, 128, 128},
+                        {128, 0, 128, 128},
+                        {0, 128, 128, 128},
+                        {128, 128, 128, 128}};
+  int map[10][10] = {
+      {
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+      },
+      {
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+      },
+      {
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+      },
+      {
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+      },
+      {
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+      },
+      {
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+      },
+      {
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+      },
+      {
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+      },
+      {
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+      },
+      {
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+      },
+  };
+  const int TILE_SIZE = 128;
+
+  SetTargetFPS(60);
+
+  Rectangle source = {};
+  Player_Info player = {};
+  player.position.x = screenWidth / 2;
+  player.position.y = screenHeight / 2;
+  player.speed = 125.0f;
+  player.playerState = PLAYER_IDLE;
+  player.playerDirection = DOWN;
+  player.walkingAnimation.frameDuration = 0.15f;
+  player.idleAnimation.frameDuration = 0.15f;
   u16 fps = 0;
   u8 InfoBuffer[1024];
   f32 dt = 0.0f;
+  Vector2 deltaPosition = {};
   while (!WindowShouldClose()) {
     fps = GetFPS();
     dt = GetFrameTime();
-    playerState = PLAYER_IDLE;
-
+    player.playerState = PLAYER_IDLE;
+    deltaPosition = (Vector2){};
     if (IsKeyDown(KEY_DOWN)) {
-      playerState = PLAYER_WALKING;
-      playerDirection = DOWN;
+      player.playerState = PLAYER_WALKING;
+      player.playerDirection = DOWN;
+      deltaPosition.y += 1.0f;
     }
     if (IsKeyDown(KEY_UP)) {
-      playerState = PLAYER_WALKING;
-      playerDirection = UP;
+      player.playerState = PLAYER_WALKING;
+      player.playerDirection = UP;
+      deltaPosition.y -= 1.0f;
     }
     if (IsKeyDown(KEY_RIGHT)) {
-      playerState = PLAYER_WALKING;
-      playerDirection = RIGHT;
+      player.playerState = PLAYER_WALKING;
+      player.playerDirection = RIGHT;
+      deltaPosition.x += 1.0f;
     }
     if (IsKeyDown(KEY_LEFT)) {
-      playerState = PLAYER_WALKING;
-      playerDirection = LEFT;
+      player.playerState = PLAYER_WALKING;
+      player.playerDirection = LEFT;
+      deltaPosition.x -= 1.0f;
     }
     if (IsKeyDown(KEY_DOWN) && IsKeyDown(KEY_RIGHT)) {
-      playerState = PLAYER_WALKING;
-      playerDirection = DOWNRIGHT;
+      player.playerState = PLAYER_WALKING;
+      player.playerDirection = DOWNRIGHT;
     }
     if (IsKeyDown(KEY_DOWN) && IsKeyDown(KEY_LEFT)) {
-      playerState = PLAYER_WALKING;
-      playerDirection = DOWNLEFT;
+      player.playerState = PLAYER_WALKING;
+      player.playerDirection = DOWNLEFT;
     }
     if (IsKeyDown(KEY_UP) && IsKeyDown(KEY_RIGHT)) {
-      playerState = PLAYER_WALKING;
-      playerDirection = UPRIGHT;
+      player.playerState = PLAYER_WALKING;
+      player.playerDirection = UPRIGHT;
     }
     if (IsKeyDown(KEY_UP) && IsKeyDown(KEY_LEFT)) {
-      playerState = PLAYER_WALKING;
-      playerDirection = UPLEFT;
+      player.playerState = PLAYER_WALKING;
+      player.playerDirection = UPLEFT;
+    }
+
+    if (Vector2Length(deltaPosition) > 0) {
+      deltaPosition = Vector2Normalize(deltaPosition);
+
+      player.position.x += deltaPosition.x * player.speed * dt;
+      player.position.y += deltaPosition.y * player.speed * dt;
     }
 
     BeginDrawing();
     ClearBackground(SKYBLUE);
-    if (playerState == PLAYER_IDLE) {
-      idleAnimationState.FrameTimer += dt;
-      if (idleAnimationState.FrameTimer >= idleAnimationState.FrameDuration) {
-        idleAnimationState.Frame = (idleAnimationState.Frame + 1) % 4;
-        idleAnimationState.FrameTimer -= idleAnimationState.FrameDuration;
-      }
+    for (int y = 0; y < 10; y++) {
+      for (int x = 0; x < 10; x++) {
+        Rectangle destination = {x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE,
+                                 TILE_SIZE};
 
-      switch (playerDirection) {
-      case DOWN: {
-        source = idleDownAnimationsources[idleAnimationState.Frame];
-      } break;
-      case DOWNRIGHT: {
-        source = idleDownRightAnimationsources[idleAnimationState.Frame];
-      } break;
-      case RIGHT: {
-        source = idleRightAnimationsources[idleAnimationState.Frame];
-      } break;
-      case UPRIGHT: {
-        source = idleUpRightAnimationsources[idleAnimationState.Frame];
-      } break;
-      case UP: {
-        source = idleUpAnimationsources[idleAnimationState.Frame];
-      } break;
-      case UPLEFT: {
-        source = idleUpLeftAnimationsources[idleAnimationState.Frame];
-      } break;
-      case LEFT: {
-        source = idleLeftAnimationsources[idleAnimationState.Frame];
-      } break;
-      case DOWNLEFT: {
-        source = idleDownLeftAnimationsources[idleAnimationState.Frame];
-      } break;
+        DrawTexturePro(grassTexture, grass[map[y][x]], destination,
+                       (Vector2){0, 0}, 0.0f, WHITE);
       }
-      DrawTexturePro(playerIdleTexture, source, destination, (Vector2){0, 0},
-                     0.0f, WHITE);
-
-      walkingAnimationState.Frame = 0;
     }
-    if (playerState == PLAYER_WALKING) {
-      walkingAnimationState.FrameTimer += dt;
-      if (walkingAnimationState.FrameTimer >=
-          walkingAnimationState.FrameDuration) {
-        walkingAnimationState.Frame = (walkingAnimationState.Frame + 1) % 4;
-        walkingAnimationState.FrameTimer -= walkingAnimationState.FrameDuration;
-      }
-
-      switch (playerDirection) {
-      case DOWN: {
-        source = walkingDownAnimationsources[walkingAnimationState.Frame];
-      } break;
-      case DOWNRIGHT: {
-        source = walkingDownRightAnimationsources[walkingAnimationState.Frame];
-      } break;
-      case RIGHT: {
-        source = walkingRightAnimationsources[walkingAnimationState.Frame];
-      } break;
-      case UPRIGHT: {
-        source = walkingUpRightAnimationsources[walkingAnimationState.Frame];
-      } break;
-      case UP: {
-        source = walkingUpAnimationsources[walkingAnimationState.Frame];
-      } break;
-      case UPLEFT: {
-        source = walkingUpLeftAnimationsources[walkingAnimationState.Frame];
-      } break;
-      case LEFT: {
-        source = walkingLeftAnimationsources[walkingAnimationState.Frame];
-      } break;
-      case DOWNLEFT: {
-        source = walkingDownLeftAnimationsources[walkingAnimationState.Frame];
-      } break;
-      }
-      DrawTexturePro(playerWalkTexture, source, destination, (Vector2){0, 0},
-                     0.0f, WHITE);
-      idleAnimationState.Frame = 0;
-    }
+    DrawPlayer(playerWalkTexture, playerIdleTexture, dt, &player);
 
     snprintf(InfoBuffer, sizeof(InfoBuffer), "Fps: %d ", fps);
     DrawText(InfoBuffer, 2, 2, 10, BLACK);

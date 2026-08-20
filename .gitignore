@@ -1,4 +1,5 @@
-/.vscode
-/assets
-/out
+.vscode/
+assets/
+out
+out/
 
