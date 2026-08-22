@@ -45,6 +45,95 @@ typedef struct {
   Animation_State idleAnimation;
 } Player_Info;
 
+void Input(Player_Info *player, f32 dt) {
+
+  Vector2 deltaPosition = {};
+  if (IsKeyPressed(KEY_DOWN)) {
+    player->playerDirection = DOWN;
+  }
+  if (IsKeyPressed(KEY_UP)) {
+    player->playerDirection = UP;
+  }
+  if (IsKeyPressed(KEY_RIGHT)) {
+    player->playerDirection = RIGHT;
+  }
+  if (IsKeyPressed(KEY_LEFT)) {
+    player->playerDirection = LEFT;
+  }
+  if(IsKeyDown(KEY_LEFT) && IsKeyReleased(KEY_RIGHT)){
+    player->playerDirection = LEFT;
+  }
+  if(IsKeyDown(KEY_LEFT) && IsKeyReleased(KEY_UP)){
+    player->playerDirection = LEFT;
+  }
+  if(IsKeyDown(KEY_LEFT) && IsKeyReleased(KEY_DOWN)){
+    player->playerDirection = LEFT;
+  }
+  if(IsKeyDown(KEY_RIGHT) && IsKeyReleased(KEY_LEFT)){
+    player->playerDirection = RIGHT;
+  }
+  if(IsKeyDown(KEY_RIGHT) && IsKeyReleased(KEY_UP)){
+    player->playerDirection = RIGHT;
+  }
+  if(IsKeyDown(KEY_RIGHT) && IsKeyReleased(KEY_DOWN)){
+    player->playerDirection = RIGHT;
+  }
+  if(IsKeyDown(KEY_UP) && IsKeyReleased(KEY_DOWN)){
+    player->playerDirection = UP;
+  }
+  if(IsKeyDown(KEY_UP) && IsKeyReleased(KEY_LEFT)){
+    player->playerDirection = UP;
+  }
+  if(IsKeyDown(KEY_UP) && IsKeyReleased(KEY_RIGHT)){
+    player->playerDirection = UP;
+  }
+  if(IsKeyDown(KEY_DOWN) && IsKeyReleased(KEY_UP)){
+    player->playerDirection = DOWN;
+  }
+  if(IsKeyDown(KEY_DOWN) && IsKeyReleased(KEY_LEFT)){
+    player->playerDirection = DOWN;
+  }
+  if(IsKeyDown(KEY_DOWN) && IsKeyReleased(KEY_RIGHT)){
+    player->playerDirection = DOWN;
+  }
+
+  if (IsKeyDown(KEY_DOWN) && IsKeyDown(KEY_RIGHT)) {
+    player->playerDirection = DOWNRIGHT;
+  }
+  if (IsKeyDown(KEY_DOWN) && IsKeyDown(KEY_LEFT)) {
+    player->playerDirection = DOWNLEFT;
+  }
+  if (IsKeyDown(KEY_UP) && IsKeyDown(KEY_RIGHT)) {
+    player->playerDirection = UPRIGHT;
+  }
+  if (IsKeyDown(KEY_UP) && IsKeyDown(KEY_LEFT)) {
+    player->playerDirection = UPLEFT;
+  }
+
+  if (IsKeyDown(KEY_DOWN)) {
+    deltaPosition.y += 1.0f;
+  }
+  if (IsKeyDown(KEY_UP)) {
+    deltaPosition.y -= 1.0f;
+  }
+  if (IsKeyDown(KEY_RIGHT)) {
+    deltaPosition.x += 1.0f;
+  }
+  if (IsKeyDown(KEY_LEFT)) {
+    deltaPosition.x -= 1.0f;
+  }
+
+  if (Vector2Length(deltaPosition) > 0) {
+    player->playerState = PLAYER_WALKING;
+    deltaPosition = Vector2Normalize(deltaPosition);
+
+    player->position.x += deltaPosition.x * player->speed * dt;
+    player->position.y += deltaPosition.y * player->speed * dt;
+  } else {
+    player->playerState = PLAYER_IDLE;
+  }
+}
+
 //===============Player Move========================
 Rectangle GetPlayerMoveDownIdleSprite() {
   Rectangle source = {};
@@ -653,22 +742,10 @@ void DrawPlayer(Texture2D playerWalkTexture, Texture2D playerIdleTexture,
                    0.0f, WHITE);
     player->idleAnimation.frame = 0;
   }
-  DrawCircle(player->position.x, player->position.y, 5, RED);
+  // DrawCircle(player->position.x, player->position.y, 5, RED);
 }
 
-int main(void) {
-  const i32 screenWidth = 800;
-  const i32 screenHeight = 450;
-
-  InitWindow(screenWidth, screenHeight, "Platform");
-  Texture2D propsTexture = LoadTexture("assets/Map/Texture/TX Props.png");
-  Texture2D playerWalkTexture =
-      LoadTexture("assets/Char/16x16/16x16 Walk-Sheet.png");
-  Texture2D playerIdleTexture =
-      LoadTexture("assets/Char/16x16/16x16 Idle-Sheet.png");
-  Texture2D grassTexture =
-      LoadTexture("assets/Map/Texture/TX Tileset Grass.png");
-  SetTextureFilter(grassTexture, TEXTURE_FILTER_POINT);
+void DrawMap(Texture2D grassTexture) {
   Rectangle grass[4] = {{0, 0, 128, 128},
                         {128, 0, 128, 128},
                         {0, 128, 128, 128},
@@ -796,6 +873,30 @@ int main(void) {
       },
   };
   const int TILE_SIZE = 128;
+  for (int y = 0; y < 10; y++) {
+    for (int x = 0; x < 10; x++) {
+      Rectangle destination = {x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE,
+                               TILE_SIZE};
+
+      DrawTexturePro(grassTexture, grass[map[y][x]], destination,
+                     (Vector2){0, 0}, 0.0f, WHITE);
+    }
+  }
+}
+
+int main(void) {
+  const i32 screenWidth = 800;
+  const i32 screenHeight = 450;
+
+  InitWindow(screenWidth, screenHeight, "Platform");
+  Texture2D propsTexture = LoadTexture("assets/Map/Texture/TX Props.png");
+  Texture2D playerWalkTexture =
+      LoadTexture("assets/Char/16x16/16x16 Walk-Sheet.png");
+  Texture2D playerIdleTexture =
+      LoadTexture("assets/Char/16x16/16x16 Idle-Sheet.png");
+  Texture2D grassTexture =
+      LoadTexture("assets/Map/Texture/TX Tileset Grass.png");
+  SetTextureFilter(grassTexture, TEXTURE_FILTER_POINT);
 
   SetTargetFPS(60);
 
@@ -808,6 +909,12 @@ int main(void) {
   player.playerDirection = DOWN;
   player.walkingAnimation.frameDuration = 0.15f;
   player.idleAnimation.frameDuration = 0.15f;
+  Player_Info enemy = {};
+  enemy.position.x = 100;
+  enemy.position.y = 100;
+  enemy.playerState = PLAYER_IDLE;
+  enemy.playerDirection = DOWN;
+  enemy.idleAnimation.frameDuration = 0.30f;
   u16 fps = 0;
   u8 InfoBuffer[1024];
   f32 dt = 0.0f;
@@ -816,62 +923,12 @@ int main(void) {
     fps = GetFPS();
     dt = GetFrameTime();
     player.playerState = PLAYER_IDLE;
-    deltaPosition = (Vector2){};
-    if (IsKeyDown(KEY_DOWN)) {
-      player.playerState = PLAYER_WALKING;
-      player.playerDirection = DOWN;
-      deltaPosition.y += 1.0f;
-    }
-    if (IsKeyDown(KEY_UP)) {
-      player.playerState = PLAYER_WALKING;
-      player.playerDirection = UP;
-      deltaPosition.y -= 1.0f;
-    }
-    if (IsKeyDown(KEY_RIGHT)) {
-      player.playerState = PLAYER_WALKING;
-      player.playerDirection = RIGHT;
-      deltaPosition.x += 1.0f;
-    }
-    if (IsKeyDown(KEY_LEFT)) {
-      player.playerState = PLAYER_WALKING;
-      player.playerDirection = LEFT;
-      deltaPosition.x -= 1.0f;
-    }
-    if (IsKeyDown(KEY_DOWN) && IsKeyDown(KEY_RIGHT)) {
-      player.playerState = PLAYER_WALKING;
-      player.playerDirection = DOWNRIGHT;
-    }
-    if (IsKeyDown(KEY_DOWN) && IsKeyDown(KEY_LEFT)) {
-      player.playerState = PLAYER_WALKING;
-      player.playerDirection = DOWNLEFT;
-    }
-    if (IsKeyDown(KEY_UP) && IsKeyDown(KEY_RIGHT)) {
-      player.playerState = PLAYER_WALKING;
-      player.playerDirection = UPRIGHT;
-    }
-    if (IsKeyDown(KEY_UP) && IsKeyDown(KEY_LEFT)) {
-      player.playerState = PLAYER_WALKING;
-      player.playerDirection = UPLEFT;
-    }
-
-    if (Vector2Length(deltaPosition) > 0) {
-      deltaPosition = Vector2Normalize(deltaPosition);
-
-      player.position.x += deltaPosition.x * player.speed * dt;
-      player.position.y += deltaPosition.y * player.speed * dt;
-    }
+    Input(&player, dt);
 
     BeginDrawing();
     ClearBackground(SKYBLUE);
-    for (int y = 0; y < 10; y++) {
-      for (int x = 0; x < 10; x++) {
-        Rectangle destination = {x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE,
-                                 TILE_SIZE};
-
-        DrawTexturePro(grassTexture, grass[map[y][x]], destination,
-                       (Vector2){0, 0}, 0.0f, WHITE);
-      }
-    }
+    DrawMap(grassTexture);
+    DrawPlayer(playerWalkTexture, playerIdleTexture, dt, &enemy);
     DrawPlayer(playerWalkTexture, playerIdleTexture, dt, &player);
 
     snprintf(InfoBuffer, sizeof(InfoBuffer), "Fps: %d ", fps);
