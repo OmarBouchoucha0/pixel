@@ -2,6 +2,27 @@
 #include "raymath.h"
 #include <stdint.h>
 #include <stdio.h>
+#include <string.h>
+
+#define KiB(n) ((n) << 10)
+#define MiB(n) ((n) << 20)
+#define GiB(n) ((n) << 30)
+
+#define MAX(a, b) (((a) > (b)) ? (a) : (b))
+#define MIN(a, b) (((a) < (b)) ? (a) : (b))
+
+#define ASSERT(Expression)                                                     \
+  if (!(Expression)) {                                                         \
+    *(char *)0 = 0;                                                            \
+  }
+
+#define ALIGN_UP(n, align) (((n) + (align) - 1) & ~((align) - 1))
+#define DEFAULT_ALIGNMENT (sizeof(void *))
+
+#define XBOX_ALIAS_1 "xbox"
+#define XBOX_ALIAS_2 "x-box"
+#define PS_ALIAS_1 "playstation"
+#define PS_ALIAS_2 "sony"
 
 typedef float f32;
 typedef double f64;
@@ -18,6 +39,13 @@ typedef int8_t i8;
 
 typedef i32 b32;
 
+// NOTE: stack based arena
+typedef struct {
+  u8 *buffer;
+  u64 capacity;
+  u64 pos;
+} Mem_Arena;
+
 typedef struct {
   u8 frame;
   f32 frameTimer;
@@ -30,11 +58,15 @@ typedef enum {
   LEFT,
   UP,
   DOWN,
-  DOWNLEFT,
-  DOWNRIGHT,
-  UPRIGHT,
-  UPLEFT
 } Player_Direction;
+
+typedef struct {
+  b32 up;
+  b32 down;
+  b32 right;
+  b32 left;
+  b32 hit;
+} Input_State;
 
 typedef struct {
   Vector2 position;
@@ -45,81 +77,114 @@ typedef struct {
   Animation_State idleAnimation;
 } Player_Info;
 
+const float leftStickDeadzoneX = 0.1f;
+const float leftStickDeadzoneY = 0.1f;
+const float rightStickDeadzoneX = 0.1f;
+const float rightStickDeadzoneY = 0.1f;
+const float leftTriggerDeadzone = -0.9f;
+const float rightTriggerDeadzone = -0.9f;
+
+void ArenaCreate(Mem_Arena *arena, void *backingBuffer, u64 capacity) {
+  arena->buffer = backingBuffer;
+  arena->capacity = capacity;
+  arena->pos = 0;
+}
+
+void ArenaClear(Mem_Arena *arena) {
+  memset((void *)arena->buffer, 0, arena->pos);
+  arena->pos = 0;
+}
+
+void *ArenaPush(Mem_Arena *arena, u64 size) {
+  u64 alignedPos = ALIGN_UP(arena->pos, DEFAULT_ALIGNMENT);
+  ASSERT(alignedPos + size <= arena->capacity)
+  arena->pos = alignedPos + size;
+  void *mem = arena->buffer + alignedPos;
+  memset(mem, 0, size);
+  return mem;
+}
+
+void ArenaPop(Mem_Arena *arena, u64 size) {
+  ASSERT(arena->pos -= size >= 0)
+  arena->pos -= size;
+}
+
+void ArenaPopTo(Mem_Arena *arena, u64 pos) {
+  ASSERT(arena->pos >= 0)
+  arena->pos = pos;
+}
+
+void GetKeyboardInput(Input_State *input) {
+  if (IsKeyDown(KEY_DOWN)) {
+    input->down = true;
+  }
+  if (IsKeyDown(KEY_UP)) {
+    input->up = true;
+  }
+  if (IsKeyDown(KEY_RIGHT)) {
+    input->right = true;
+  }
+  if (IsKeyDown(KEY_LEFT)) {
+    input->left = true;
+  }
+}
+
+void GetGamepadInput(Input_State *input) {
+  i32 gamepad = 0;
+  while (IsGamepadAvailable(gamepad)) {
+    if (IsGamepadButtonDown(gamepad, GAMEPAD_BUTTON_LEFT_FACE_DOWN)) {
+      input->down = true;
+    }
+    if (IsGamepadButtonDown(gamepad, GAMEPAD_BUTTON_LEFT_FACE_UP)) {
+      input->up = true;
+    }
+    if (IsGamepadButtonDown(gamepad, GAMEPAD_BUTTON_LEFT_FACE_RIGHT)) {
+      input->right = true;
+    }
+    if (IsGamepadButtonDown(gamepad, GAMEPAD_BUTTON_LEFT_FACE_LEFT)) {
+      input->left = true;
+    }
+
+    f32 axisX = GetGamepadAxisMovement(gamepad, GAMEPAD_AXIS_LEFT_X);
+    f32 axisY = GetGamepadAxisMovement(gamepad, GAMEPAD_AXIS_LEFT_Y);
+
+    if (axisY > leftStickDeadzoneY) {
+      input->down = true;
+    }
+    if (axisY < -leftStickDeadzoneY) {
+      input->up = true;
+    }
+    if (axisX > leftStickDeadzoneX) {
+      input->right = true;
+    }
+    if (axisX < -leftStickDeadzoneX) {
+      input->left = true;
+    }
+
+    ++gamepad;
+  }
+}
+
 void Input(Player_Info *player, f32 dt) {
 
   Vector2 deltaPosition = {};
-  if (IsKeyPressed(KEY_DOWN)) {
+  Input_State input = {};
+  GetKeyboardInput(&input);
+  GetGamepadInput(&input);
+  if (input.down) {
     player->playerDirection = DOWN;
-  }
-  if (IsKeyPressed(KEY_UP)) {
-    player->playerDirection = UP;
-  }
-  if (IsKeyPressed(KEY_RIGHT)) {
-    player->playerDirection = RIGHT;
-  }
-  if (IsKeyPressed(KEY_LEFT)) {
-    player->playerDirection = LEFT;
-  }
-  if(IsKeyDown(KEY_LEFT) && IsKeyReleased(KEY_RIGHT)){
-    player->playerDirection = LEFT;
-  }
-  if(IsKeyDown(KEY_LEFT) && IsKeyReleased(KEY_UP)){
-    player->playerDirection = LEFT;
-  }
-  if(IsKeyDown(KEY_LEFT) && IsKeyReleased(KEY_DOWN)){
-    player->playerDirection = LEFT;
-  }
-  if(IsKeyDown(KEY_RIGHT) && IsKeyReleased(KEY_LEFT)){
-    player->playerDirection = RIGHT;
-  }
-  if(IsKeyDown(KEY_RIGHT) && IsKeyReleased(KEY_UP)){
-    player->playerDirection = RIGHT;
-  }
-  if(IsKeyDown(KEY_RIGHT) && IsKeyReleased(KEY_DOWN)){
-    player->playerDirection = RIGHT;
-  }
-  if(IsKeyDown(KEY_UP) && IsKeyReleased(KEY_DOWN)){
-    player->playerDirection = UP;
-  }
-  if(IsKeyDown(KEY_UP) && IsKeyReleased(KEY_LEFT)){
-    player->playerDirection = UP;
-  }
-  if(IsKeyDown(KEY_UP) && IsKeyReleased(KEY_RIGHT)){
-    player->playerDirection = UP;
-  }
-  if(IsKeyDown(KEY_DOWN) && IsKeyReleased(KEY_UP)){
-    player->playerDirection = DOWN;
-  }
-  if(IsKeyDown(KEY_DOWN) && IsKeyReleased(KEY_LEFT)){
-    player->playerDirection = DOWN;
-  }
-  if(IsKeyDown(KEY_DOWN) && IsKeyReleased(KEY_RIGHT)){
-    player->playerDirection = DOWN;
-  }
-
-  if (IsKeyDown(KEY_DOWN) && IsKeyDown(KEY_RIGHT)) {
-    player->playerDirection = DOWNRIGHT;
-  }
-  if (IsKeyDown(KEY_DOWN) && IsKeyDown(KEY_LEFT)) {
-    player->playerDirection = DOWNLEFT;
-  }
-  if (IsKeyDown(KEY_UP) && IsKeyDown(KEY_RIGHT)) {
-    player->playerDirection = UPRIGHT;
-  }
-  if (IsKeyDown(KEY_UP) && IsKeyDown(KEY_LEFT)) {
-    player->playerDirection = UPLEFT;
-  }
-
-  if (IsKeyDown(KEY_DOWN)) {
     deltaPosition.y += 1.0f;
   }
-  if (IsKeyDown(KEY_UP)) {
+  if (input.up) {
+    player->playerDirection = UP;
     deltaPosition.y -= 1.0f;
   }
-  if (IsKeyDown(KEY_RIGHT)) {
+  if (input.right) {
+    player->playerDirection = RIGHT;
     deltaPosition.x += 1.0f;
   }
-  if (IsKeyDown(KEY_LEFT)) {
+  if (input.left) {
+    player->playerDirection = LEFT;
     deltaPosition.x -= 1.0f;
   }
 
@@ -169,41 +234,6 @@ void GetAllWalkingDownAnimations(Rectangle *source) {
   source[3] = GetPlayerLeftFootForwardDownSprite();
 }
 
-Rectangle GetPlayerMoveDownRightIdleSprite() {
-  Rectangle source = {};
-  source.x = 3;
-  source.y = 31;
-  source.width = 16;
-  source.height = 16;
-  return source;
-}
-
-Rectangle GetPlayerRightFootForwardDownRightSprite() {
-  Rectangle source = {};
-  source.x = 27;
-  source.y = 31;
-  source.width = 16;
-  source.height = 16;
-  return source;
-}
-
-Rectangle GetPlayerLeftFootForwardDownRightSprite() {
-  Rectangle source = {};
-  source.x = 74;
-  source.y = 31;
-  source.width = 16;
-  source.height = 16;
-  return source;
-}
-
-// TODO: this should be better
-void GetAllWalkingDownRightAnimations(Rectangle *source) {
-  source[0] = GetPlayerMoveDownRightIdleSprite();
-  source[1] = GetPlayerRightFootForwardDownRightSprite();
-  source[2] = GetPlayerMoveDownRightIdleSprite();
-  source[3] = GetPlayerLeftFootForwardDownRightSprite();
-}
-
 Rectangle GetPlayerMoveRightIdleSprite() {
   Rectangle source = {};
   source.x = 3;
@@ -237,41 +267,6 @@ void GetAllWalkingRightAnimations(Rectangle *source) {
   source[1] = GetPlayerRightFootForwardRightSprite();
   source[2] = GetPlayerMoveRightIdleSprite();
   source[3] = GetPlayerLeftFootForwardRightSprite();
-}
-
-Rectangle GetPlayerMoveUpRightIdleSprite() {
-  Rectangle source = {};
-  source.x = 3;
-  source.y = 79;
-  source.width = 16;
-  source.height = 16;
-  return source;
-}
-
-Rectangle GetPlayerRightFootForwardUpRightSprite() {
-  Rectangle source = {};
-  source.x = 27;
-  source.y = 79;
-  source.width = 16;
-  source.height = 16;
-  return source;
-}
-
-Rectangle GetPlayerLeftFootForwardUpRightSprite() {
-  Rectangle source = {};
-  source.x = 74;
-  source.y = 79;
-  source.width = 16;
-  source.height = 16;
-  return source;
-}
-
-// TODO: this should be better
-void GetAllWalkingUpRightAnimations(Rectangle *source) {
-  source[0] = GetPlayerMoveUpRightIdleSprite();
-  source[1] = GetPlayerRightFootForwardUpRightSprite();
-  source[2] = GetPlayerMoveUpRightIdleSprite();
-  source[3] = GetPlayerLeftFootForwardUpRightSprite();
 }
 
 Rectangle GetPlayerMoveUpIdleSprite() {
@@ -309,41 +304,6 @@ void GetAllWalkingUpAnimations(Rectangle *source) {
   source[3] = GetPlayerLeftFootForwardUpSprite();
 }
 
-Rectangle GetPlayerMoveDownLeftIdleSprite() {
-  Rectangle source = {};
-  source.x = 4;
-  source.y = 31;
-  source.width = -16;
-  source.height = 16;
-  return source;
-}
-
-Rectangle GetPlayerRightFootForwardDownLeftSprite() {
-  Rectangle source = {};
-  source.x = 28;
-  source.y = 31;
-  source.width = -16;
-  source.height = 16;
-  return source;
-}
-
-Rectangle GetPlayerLeftFootForwardDownLeftSprite() {
-  Rectangle source = {};
-  source.x = 75;
-  source.y = 31;
-  source.width = -16;
-  source.height = 16;
-  return source;
-}
-
-// TODO: this should be better
-void GetAllWalkingDownLeftAnimations(Rectangle *source) {
-  source[0] = GetPlayerMoveDownLeftIdleSprite();
-  source[1] = GetPlayerRightFootForwardDownLeftSprite();
-  source[2] = GetPlayerMoveDownLeftIdleSprite();
-  source[3] = GetPlayerLeftFootForwardDownLeftSprite();
-}
-
 Rectangle GetPlayerMoveLeftIdleSprite() {
   Rectangle source = {};
   source.x = 4;
@@ -379,41 +339,6 @@ void GetAllWalkingLeftAnimations(Rectangle *source) {
   source[3] = GetPlayerLeftFootForwardLeftSprite();
 }
 
-Rectangle GetPlayerMoveUpLeftIdleSprite() {
-  Rectangle source = {};
-  source.x = 4;
-  source.y = 79;
-  source.width = -16;
-  source.height = 16;
-  return source;
-}
-
-Rectangle GetPlayerRightFootForwardUpLeftSprite() {
-  Rectangle source = {};
-  source.x = 28;
-  source.y = 79;
-  source.width = -16;
-  source.height = 16;
-  return source;
-}
-
-Rectangle GetPlayerLeftFootForwardUpLeftSprite() {
-  Rectangle source = {};
-  source.x = 75;
-  source.y = 79;
-  source.width = -16;
-  source.height = 16;
-  return source;
-}
-
-// TODO: this should be better
-void GetAllWalkingUpLeftAnimations(Rectangle *source) {
-  source[0] = GetPlayerMoveUpLeftIdleSprite();
-  source[1] = GetPlayerRightFootForwardUpLeftSprite();
-  source[2] = GetPlayerMoveUpLeftIdleSprite();
-  source[3] = GetPlayerLeftFootForwardUpLeftSprite();
-}
-
 //===============Player Idle========================
 Rectangle GetPlayerDownIdleSprite() {
   Rectangle source = {};
@@ -439,32 +364,6 @@ void GetAllDownIdleAnimations(Rectangle *source) {
   source[1] = GetPlayerDownIdle2Sprite();
   source[2] = GetPlayerDownIdle2Sprite();
   source[3] = GetPlayerDownIdleSprite();
-}
-
-Rectangle GetPlayerDownRightIdleSprite() {
-  Rectangle source = {};
-  source.x = 3;
-  source.y = 31;
-  source.width = 16;
-  source.height = 16;
-  return source;
-}
-
-Rectangle GetPlayerDownRightIdle2Sprite() {
-  Rectangle source = {};
-  source.x = 27;
-  source.y = 31;
-  source.width = 16;
-  source.height = 16;
-  return source;
-}
-
-// TODO: this should be better
-void GetAllDownRightIdleAnimations(Rectangle *source) {
-  source[0] = GetPlayerDownRightIdleSprite();
-  source[1] = GetPlayerDownRightIdle2Sprite();
-  source[2] = GetPlayerDownRightIdle2Sprite();
-  source[3] = GetPlayerDownRightIdleSprite();
 }
 
 Rectangle GetPlayerRightIdleSprite() {
@@ -493,32 +392,6 @@ void GetAllRightIdleAnimations(Rectangle *source) {
   source[3] = GetPlayerRightIdleSprite();
 }
 
-Rectangle GetPlayerUpRightIdleSprite() {
-  Rectangle source = {};
-  source.x = 3;
-  source.y = 80;
-  source.width = 16;
-  source.height = 16;
-  return source;
-}
-
-Rectangle GetPlayerUpRightIdle2Sprite() {
-  Rectangle source = {};
-  source.x = 27;
-  source.y = 80;
-  source.width = 16;
-  source.height = 16;
-  return source;
-}
-
-// TODO: this should be better
-void GetAllUpRightIdleAnimations(Rectangle *source) {
-  source[0] = GetPlayerUpRightIdleSprite();
-  source[1] = GetPlayerUpRightIdle2Sprite();
-  source[2] = GetPlayerUpRightIdle2Sprite();
-  source[3] = GetPlayerUpRightIdleSprite();
-}
-
 Rectangle GetPlayerUpIdleSprite() {
   Rectangle source = {};
   source.x = 3;
@@ -543,32 +416,6 @@ void GetAllUpIdleAnimations(Rectangle *source) {
   source[1] = GetPlayerUpIdle2Sprite();
   source[2] = GetPlayerUpIdle2Sprite();
   source[3] = GetPlayerUpIdleSprite();
-}
-
-Rectangle GetPlayerDownLeftIdleSprite() {
-  Rectangle source = {};
-  source.x = 3;
-  source.y = 32;
-  source.width = -16;
-  source.height = 16;
-  return source;
-}
-
-Rectangle GetPlayerDownLeftIdle2Sprite() {
-  Rectangle source = {};
-  source.x = 27;
-  source.y = 32;
-  source.width = -16;
-  source.height = 16;
-  return source;
-}
-
-// TODO: this should be better
-void GetAllDownLeftIdleAnimations(Rectangle *source) {
-  source[0] = GetPlayerDownLeftIdleSprite();
-  source[1] = GetPlayerDownLeftIdle2Sprite();
-  source[2] = GetPlayerDownLeftIdle2Sprite();
-  source[3] = GetPlayerDownLeftIdleSprite();
 }
 
 Rectangle GetPlayerLeftIdleSprite() {
@@ -597,68 +444,26 @@ void GetAllLeftIdleAnimations(Rectangle *source) {
   source[3] = GetPlayerLeftIdleSprite();
 }
 
-Rectangle GetPlayerUpLeftIdleSprite() {
-  Rectangle source = {};
-  source.x = 2;
-  source.y = 80;
-  source.width = -16;
-  source.height = 16;
-  return source;
-}
-
-Rectangle GetPlayerUpLeftIdle2Sprite() {
-  Rectangle source = {};
-  source.x = 26;
-  source.y = 80;
-  source.width = -16;
-  source.height = 16;
-  return source;
-}
-
-// TODO: this should be better
-void GetAllUpLeftIdleAnimations(Rectangle *source) {
-  source[0] = GetPlayerUpLeftIdleSprite();
-  source[1] = GetPlayerUpLeftIdle2Sprite();
-  source[2] = GetPlayerUpLeftIdle2Sprite();
-  source[3] = GetPlayerUpLeftIdleSprite();
-}
-
 void DrawPlayer(Texture2D playerWalkTexture, Texture2D playerIdleTexture,
                 f32 dt, Player_Info *player) {
 
   Rectangle walkingDownAnimationsources[4] = {};
   GetAllWalkingDownAnimations(walkingDownAnimationsources);
-  Rectangle walkingDownRightAnimationsources[4] = {};
-  GetAllWalkingDownRightAnimations(walkingDownRightAnimationsources);
-  Rectangle walkingRightAnimationsources[4] = {};
-  GetAllWalkingRightAnimations(walkingRightAnimationsources);
-  Rectangle walkingUpRightAnimationsources[4] = {};
-  GetAllWalkingUpRightAnimations(walkingUpRightAnimationsources);
   Rectangle walkingUpAnimationsources[4] = {};
   GetAllWalkingUpAnimations(walkingUpAnimationsources);
-  Rectangle walkingDownLeftAnimationsources[4] = {};
-  GetAllWalkingDownLeftAnimations(walkingDownLeftAnimationsources);
+  Rectangle walkingRightAnimationsources[4] = {};
+  GetAllWalkingRightAnimations(walkingRightAnimationsources);
   Rectangle walkingLeftAnimationsources[4] = {};
   GetAllWalkingLeftAnimations(walkingLeftAnimationsources);
-  Rectangle walkingUpLeftAnimationsources[4] = {};
-  GetAllWalkingUpLeftAnimations(walkingUpLeftAnimationsources);
 
   Rectangle idleDownAnimationsources[4] = {};
   GetAllDownIdleAnimations(idleDownAnimationsources);
-  Rectangle idleDownRightAnimationsources[4] = {};
-  GetAllDownRightIdleAnimations(idleDownRightAnimationsources);
-  Rectangle idleRightAnimationsources[4] = {};
-  GetAllRightIdleAnimations(idleRightAnimationsources);
-  Rectangle idleUpRightAnimationsources[4] = {};
-  GetAllUpRightIdleAnimations(idleUpRightAnimationsources);
   Rectangle idleUpAnimationsources[4] = {};
   GetAllUpIdleAnimations(idleUpAnimationsources);
-  Rectangle idleUpLeftAnimationsources[4] = {};
-  GetAllUpLeftIdleAnimations(idleUpLeftAnimationsources);
+  Rectangle idleRightAnimationsources[4] = {};
+  GetAllRightIdleAnimations(idleRightAnimationsources);
   Rectangle idleLeftAnimationsources[4] = {};
   GetAllLeftIdleAnimations(idleLeftAnimationsources);
-  Rectangle idleDownLeftAnimationsources[4] = {};
-  GetAllDownLeftIdleAnimations(idleDownLeftAnimationsources);
 
   Rectangle source = {};
   Rectangle destination = {player->position.x - 16, player->position.y - 16, 32,
@@ -676,26 +481,14 @@ void DrawPlayer(Texture2D playerWalkTexture, Texture2D playerIdleTexture,
     case DOWN: {
       source = idleDownAnimationsources[player->idleAnimation.frame];
     } break;
-    case DOWNRIGHT: {
-      source = idleDownRightAnimationsources[player->idleAnimation.frame];
-    } break;
     case RIGHT: {
       source = idleRightAnimationsources[player->idleAnimation.frame];
-    } break;
-    case UPRIGHT: {
-      source = idleUpRightAnimationsources[player->idleAnimation.frame];
     } break;
     case UP: {
       source = idleUpAnimationsources[player->idleAnimation.frame];
     } break;
-    case UPLEFT: {
-      source = idleUpLeftAnimationsources[player->idleAnimation.frame];
-    } break;
     case LEFT: {
       source = idleLeftAnimationsources[player->idleAnimation.frame];
-    } break;
-    case DOWNLEFT: {
-      source = idleDownLeftAnimationsources[player->idleAnimation.frame];
     } break;
     }
     DrawTexturePro(playerIdleTexture, source, destination, (Vector2){0, 0},
@@ -716,26 +509,14 @@ void DrawPlayer(Texture2D playerWalkTexture, Texture2D playerIdleTexture,
     case DOWN: {
       source = walkingDownAnimationsources[player->walkingAnimation.frame];
     } break;
-    case DOWNRIGHT: {
-      source = walkingDownRightAnimationsources[player->walkingAnimation.frame];
-    } break;
     case RIGHT: {
       source = walkingRightAnimationsources[player->walkingAnimation.frame];
-    } break;
-    case UPRIGHT: {
-      source = walkingUpRightAnimationsources[player->walkingAnimation.frame];
     } break;
     case UP: {
       source = walkingUpAnimationsources[player->walkingAnimation.frame];
     } break;
-    case UPLEFT: {
-      source = walkingUpLeftAnimationsources[player->walkingAnimation.frame];
-    } break;
     case LEFT: {
       source = walkingLeftAnimationsources[player->walkingAnimation.frame];
-    } break;
-    case DOWNLEFT: {
-      source = walkingDownLeftAnimationsources[player->walkingAnimation.frame];
     } break;
     }
     DrawTexturePro(playerWalkTexture, source, destination, (Vector2){0, 0},
@@ -887,7 +668,7 @@ void DrawMap(Texture2D grassTexture) {
 int main(void) {
   const i32 screenWidth = 800;
   const i32 screenHeight = 450;
-
+  SetConfigFlags(FLAG_MSAA_4X_HINT);
   InitWindow(screenWidth, screenHeight, "Platform");
   Texture2D propsTexture = LoadTexture("assets/Map/Texture/TX Props.png");
   Texture2D playerWalkTexture =
