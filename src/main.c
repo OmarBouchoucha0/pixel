@@ -19,11 +19,6 @@
 #define ALIGN_UP(n, align) (((n) + (align) - 1) & ~((align) - 1))
 #define DEFAULT_ALIGNMENT (sizeof(void *))
 
-#define XBOX_ALIAS_1 "xbox"
-#define XBOX_ALIAS_2 "x-box"
-#define PS_ALIAS_1 "playstation"
-#define PS_ALIAS_2 "sony"
-
 typedef float f32;
 typedef double f64;
 
@@ -52,7 +47,7 @@ typedef struct {
   f32 frameDuration;
 } Animation_State;
 
-typedef enum { PLAYER_IDLE, PLAYER_WALKING } Player_State;
+typedef enum { PLAYER_IDLE, PLAYER_WALKING, PLAYER_ATTACKING } Player_State;
 typedef enum {
   RIGHT,
   LEFT,
@@ -75,6 +70,7 @@ typedef struct {
   Player_Direction playerDirection;
   Animation_State walkingAnimation;
   Animation_State idleAnimation;
+  Animation_State attackingAnimation;
 } Player_Info;
 
 const float leftStickDeadzoneX = 0.1f;
@@ -114,6 +110,7 @@ void ArenaPopTo(Mem_Arena *arena, u64 pos) {
   arena->pos = pos;
 }
 
+//=======================input===============================
 void GetKeyboardInput(Input_State *input) {
   if (IsKeyDown(KEY_DOWN)) {
     input->down = true;
@@ -126,6 +123,9 @@ void GetKeyboardInput(Input_State *input) {
   }
   if (IsKeyDown(KEY_LEFT)) {
     input->left = true;
+  }
+  if (IsKeyDown(KEY_E)) {
+    input->hit = true;
   }
 }
 
@@ -143,6 +143,9 @@ void GetGamepadInput(Input_State *input) {
     }
     if (IsGamepadButtonDown(gamepad, GAMEPAD_BUTTON_LEFT_FACE_LEFT)) {
       input->left = true;
+    }
+    if (IsGamepadButtonDown(gamepad, GAMEPAD_BUTTON_RIGHT_FACE_LEFT)) {
+      input->hit = true;
     }
 
     f32 axisX = GetGamepadAxisMovement(gamepad, GAMEPAD_AXIS_LEFT_X);
@@ -166,9 +169,11 @@ void GetGamepadInput(Input_State *input) {
 }
 
 void Input(Player_Info *player, f32 dt) {
-
   Vector2 deltaPosition = {};
   Input_State input = {};
+  if (player->attackingAnimation.frame == 0) {
+    player->playerState = PLAYER_IDLE;
+  }
   GetKeyboardInput(&input);
   GetGamepadInput(&input);
   if (input.down) {
@@ -187,15 +192,18 @@ void Input(Player_Info *player, f32 dt) {
     player->playerDirection = LEFT;
     deltaPosition.x -= 1.0f;
   }
-
   if (Vector2Length(deltaPosition) > 0) {
-    player->playerState = PLAYER_WALKING;
+
+    if (player->attackingAnimation.frame == 0) {
+      player->playerState = PLAYER_WALKING;
+    }
     deltaPosition = Vector2Normalize(deltaPosition);
 
     player->position.x += deltaPosition.x * player->speed * dt;
     player->position.y += deltaPosition.y * player->speed * dt;
-  } else {
-    player->playerState = PLAYER_IDLE;
+  }
+  if (input.hit) {
+    player->playerState = PLAYER_ATTACKING;
   }
 }
 
@@ -443,9 +451,241 @@ void GetAllLeftIdleAnimations(Rectangle *source) {
   source[2] = GetPlayerLeftIdle2Sprite();
   source[3] = GetPlayerLeftIdleSprite();
 }
+//===========================player attack============================
+Rectangle GetPlayerDownAttack1Sprite() {
+  Rectangle source = {};
+  source.x = 3;
+  source.y = 8;
+  source.width = 16;
+  source.height = 16;
+  return source;
+}
+Rectangle GetPlayerDownAttack2Sprite() {
+  Rectangle source = {};
+  source.x = 27;
+  source.y = 8;
+  source.width = 16;
+  source.height = 16;
+  return source;
+}
+Rectangle GetPlayerDownAttack3Sprite() {
+  Rectangle source = {};
+  source.x = 51;
+  source.y = 8;
+  source.width = 16;
+  source.height = 16;
+  return source;
+}
+Rectangle GetPlayerDownAttack4Sprite() {
+  Rectangle source = {};
+  source.x = 76;
+  source.y = 6;
+  source.width = 16;
+  source.height = 16;
+  return source;
+}
+Rectangle GetPlayerDownAttack5Sprite() {
+  Rectangle source = {};
+  source.x = 102;
+  source.y = 8;
+  source.width = 16;
+  source.height = 16;
+  return source;
+}
+Rectangle GetPlayerDownAttack6Sprite() {
+  Rectangle source = {};
+  source.x = 147;
+  source.y = 8;
+  source.width = 16;
+  source.height = 16;
+  return source;
+}
+
+void GetAllDownAttackAnimations(Rectangle *source) {
+  source[0] = GetPlayerDownAttack1Sprite();
+  source[1] = GetPlayerDownAttack2Sprite();
+  source[2] = GetPlayerDownAttack3Sprite();
+  source[3] = GetPlayerDownAttack4Sprite();
+  source[4] = GetPlayerDownAttack5Sprite();
+  source[5] = GetPlayerDownAttack6Sprite();
+}
+
+Rectangle GetPlayerRightAttack1Sprite() {
+  Rectangle source = {};
+  source.x = 3;
+  source.y = 55;
+  source.width = 16;
+  source.height = 16;
+  return source;
+}
+Rectangle GetPlayerRightAttack2Sprite() {
+  Rectangle source = {};
+  source.x = 27;
+  source.y = 55;
+  source.width = 16;
+  source.height = 16;
+  return source;
+}
+Rectangle GetPlayerRightAttack3Sprite() {
+  Rectangle source = {};
+  source.x = 51;
+  source.y = 55;
+  source.width = 16;
+  source.height = 16;
+  return source;
+}
+Rectangle GetPlayerRightAttack4Sprite() {
+  Rectangle source = {};
+  source.x = 77;
+  source.y = 55;
+  source.width = 16;
+  source.height = 16;
+  return source;
+}
+Rectangle GetPlayerRightAttack5Sprite() {
+  Rectangle source = {};
+  source.x = 103;
+  source.y = 55;
+  source.width = 16;
+  source.height = 16;
+  return source;
+}
+Rectangle GetPlayerRightAttack6Sprite() {
+  Rectangle source = {};
+  source.x = 147;
+  source.y = 55;
+  source.width = 16;
+  source.height = 16;
+  return source;
+}
+
+void GetAllRightAttackAnimations(Rectangle *source) {
+  source[0] = GetPlayerRightAttack1Sprite();
+  source[1] = GetPlayerRightAttack2Sprite();
+  source[2] = GetPlayerRightAttack3Sprite();
+  source[3] = GetPlayerRightAttack4Sprite();
+  source[4] = GetPlayerRightAttack5Sprite();
+  source[5] = GetPlayerRightAttack6Sprite();
+}
+
+Rectangle GetPlayerUpAttack1Sprite() {
+  Rectangle source = {};
+  source.x = 3;
+  source.y = 103;
+  source.width = 16;
+  source.height = 16;
+  return source;
+}
+Rectangle GetPlayerUpAttack2Sprite() {
+  Rectangle source = {};
+  source.x = 27;
+  source.y = 103;
+  source.width = 16;
+  source.height = 16;
+  return source;
+}
+Rectangle GetPlayerUpAttack3Sprite() {
+  Rectangle source = {};
+  source.x = 51;
+  source.y = 103;
+  source.width = 16;
+  source.height = 16;
+  return source;
+}
+Rectangle GetPlayerUpAttack4Sprite() {
+  Rectangle source = {};
+  source.x = 76;
+  source.y = 103;
+  source.width = 16;
+  source.height = 16;
+  return source;
+}
+Rectangle GetPlayerUpAttack5Sprite() {
+  Rectangle source = {};
+  source.x = 100;
+  source.y = 103;
+  source.width = 16;
+  source.height = 16;
+  return source;
+}
+Rectangle GetPlayerUpAttack6Sprite() {
+  Rectangle source = {};
+  source.x = 148;
+  source.y = 103;
+  source.width = 16;
+  source.height = 16;
+  return source;
+}
+
+void GetAllUpAttackAnimations(Rectangle *source) {
+  source[0] = GetPlayerUpAttack1Sprite();
+  source[1] = GetPlayerUpAttack2Sprite();
+  source[2] = GetPlayerUpAttack3Sprite();
+  source[3] = GetPlayerUpAttack4Sprite();
+  source[4] = GetPlayerUpAttack5Sprite();
+  source[5] = GetPlayerUpAttack6Sprite();
+}
+
+Rectangle GetPlayerLeftAttack1Sprite() {
+  Rectangle source = {};
+  source.x = 3;
+  source.y = 55;
+  source.width = -16;
+  source.height = 16;
+  return source;
+}
+Rectangle GetPlayerLeftAttack2Sprite() {
+  Rectangle source = {};
+  source.x = 27;
+  source.y = 55;
+  source.width = -16;
+  source.height = 16;
+  return source;
+}
+Rectangle GetPlayerLeftAttack3Sprite() {
+  Rectangle source = {};
+  source.x = 51;
+  source.y = 55;
+  source.width = -16;
+  source.height = 16;
+  return source;
+}
+Rectangle GetPlayerLeftAttack4Sprite() {
+  Rectangle source = {};
+  source.x = 77;
+  source.y = 55;
+  source.width = -16;
+  source.height = 16;
+  return source;
+}
+Rectangle GetPlayerLeftAttack5Sprite() {
+  Rectangle source = {};
+  source.x = 103;
+  source.y = 55;
+  source.width = -16;
+  source.height = 16;
+  return source;
+}
+Rectangle GetPlayerLeftAttack6Sprite() {
+  Rectangle source = {};
+  source.x = 147;
+  source.y = 55;
+  source.width = -16;
+  source.height = 16;
+  return source;
+}
+
+void GetAllLeftAttackAnimations(Rectangle *source) {
+  source[0] = GetPlayerLeftAttack1Sprite();
+  source[1] = GetPlayerLeftAttack2Sprite();
+  source[2] = GetPlayerLeftAttack3Sprite();
+  source[3] = GetPlayerLeftAttack4Sprite();
+  source[4] = GetPlayerLeftAttack5Sprite();
+  source[5] = GetPlayerLeftAttack6Sprite();
+}
 
 void DrawPlayer(Texture2D playerWalkTexture, Texture2D playerIdleTexture,
-                f32 dt, Player_Info *player) {
+                Texture2D playerAttackTexture, f32 dt, Player_Info *player) {
 
   Rectangle walkingDownAnimationsources[4] = {};
   GetAllWalkingDownAnimations(walkingDownAnimationsources);
@@ -464,6 +704,15 @@ void DrawPlayer(Texture2D playerWalkTexture, Texture2D playerIdleTexture,
   GetAllRightIdleAnimations(idleRightAnimationsources);
   Rectangle idleLeftAnimationsources[4] = {};
   GetAllLeftIdleAnimations(idleLeftAnimationsources);
+
+  Rectangle attackingDownAnimationsources[6] = {};
+  GetAllDownAttackAnimations(attackingDownAnimationsources);
+  Rectangle attackingUpAnimationsources[6] = {};
+  GetAllUpAttackAnimations(attackingUpAnimationsources);
+  Rectangle attackingRightAnimationsources[6] = {};
+  GetAllRightAttackAnimations(attackingRightAnimationsources);
+  Rectangle attackingLeftAnimationsources[6] = {};
+  GetAllLeftAttackAnimations(attackingLeftAnimationsources);
 
   Rectangle source = {};
   Rectangle destination = {player->position.x - 16, player->position.y - 16, 32,
@@ -495,6 +744,7 @@ void DrawPlayer(Texture2D playerWalkTexture, Texture2D playerIdleTexture,
                    0.0f, WHITE);
 
     player->walkingAnimation.frame = 0;
+    player->attackingAnimation.frame = 0;
   }
   if (player->playerState == PLAYER_WALKING) {
     player->walkingAnimation.frameTimer += dt;
@@ -522,6 +772,37 @@ void DrawPlayer(Texture2D playerWalkTexture, Texture2D playerIdleTexture,
     DrawTexturePro(playerWalkTexture, source, destination, (Vector2){0, 0},
                    0.0f, WHITE);
     player->idleAnimation.frame = 0;
+    player->attackingAnimation.frame = 0;
+  }
+  if (player->playerState == PLAYER_ATTACKING) {
+    player->attackingAnimation.frameTimer += dt;
+    if (player->attackingAnimation.frameTimer >=
+        player->attackingAnimation.frameDuration) {
+      player->attackingAnimation.frame =
+          (player->attackingAnimation.frame + 1) % 6;
+      player->attackingAnimation.frameTimer -=
+          player->attackingAnimation.frameDuration;
+    }
+
+    switch (player->playerDirection) {
+    case DOWN: {
+      source = attackingDownAnimationsources[player->attackingAnimation.frame];
+    } break;
+    case RIGHT: {
+      source = attackingRightAnimationsources[player->attackingAnimation.frame];
+    } break;
+    case UP: {
+      source = attackingUpAnimationsources[player->attackingAnimation.frame];
+    } break;
+    case LEFT: {
+      source = attackingLeftAnimationsources[player->attackingAnimation.frame];
+    } break;
+    }
+
+    DrawTexturePro(playerAttackTexture, source, destination, (Vector2){0, 0},
+                   0.0f, WHITE);
+    player->idleAnimation.frame = 0;
+    player->walkingAnimation.frame = 0;
   }
   // DrawCircle(player->position.x, player->position.y, 5, RED);
 }
@@ -675,6 +956,8 @@ int main(void) {
       LoadTexture("assets/Char/16x16/16x16 Walk-Sheet.png");
   Texture2D playerIdleTexture =
       LoadTexture("assets/Char/16x16/16x16 Idle-Sheet.png");
+  Texture2D playerAttackTexture =
+      LoadTexture("assets/Char/16x16/16x16 Attack-Sheet.png");
   Texture2D grassTexture =
       LoadTexture("assets/Map/Texture/TX Tileset Grass.png");
   SetTextureFilter(grassTexture, TEXTURE_FILTER_POINT);
@@ -690,6 +973,7 @@ int main(void) {
   player.playerDirection = DOWN;
   player.walkingAnimation.frameDuration = 0.15f;
   player.idleAnimation.frameDuration = 0.15f;
+  player.attackingAnimation.frameDuration = 0.1f;
   Player_Info enemy = {};
   enemy.position.x = 100;
   enemy.position.y = 100;
@@ -703,17 +987,21 @@ int main(void) {
   while (!WindowShouldClose()) {
     fps = GetFPS();
     dt = GetFrameTime();
-    player.playerState = PLAYER_IDLE;
     Input(&player, dt);
 
     BeginDrawing();
     ClearBackground(SKYBLUE);
     DrawMap(grassTexture);
-    DrawPlayer(playerWalkTexture, playerIdleTexture, dt, &enemy);
-    DrawPlayer(playerWalkTexture, playerIdleTexture, dt, &player);
+    DrawPlayer(playerWalkTexture, playerIdleTexture, playerAttackTexture, dt,
+               &enemy);
+    DrawPlayer(playerWalkTexture, playerIdleTexture, playerAttackTexture, dt,
+               &player);
 
     snprintf(InfoBuffer, sizeof(InfoBuffer), "Fps: %d ", fps);
     DrawText(InfoBuffer, 2, 2, 10, BLACK);
+    snprintf(InfoBuffer, sizeof(InfoBuffer), "State : %d Direction: %d",
+             player.playerState, player.playerDirection);
+    DrawText(InfoBuffer, 2, 13, 10, BLACK);
 
     EndDrawing();
   }
